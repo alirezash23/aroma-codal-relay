@@ -20,9 +20,15 @@ app = FastAPI(
 )
 
 
-def check_auth(key: Optional[str]) -> None:
-    if API_KEY and key != API_KEY:
-        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+def check_auth(header_key: Optional[str], query_key: Optional[str] = None) -> None:
+    """
+    کلید یا در هدر X-API-Key می‌آید یا در پارامتر ?key=
+    پارامتر برای تست ساده در مرورگر است؛ در اتصال ماشینی هدر را استفاده کن،
+    چون query در لاگ سرور و تاریخچه مرورگر ثبت می‌شود.
+    """
+    if API_KEY and header_key != API_KEY and query_key != API_KEY:
+        raise HTTPException(status_code=401,
+                            detail="invalid or missing API key (X-API-Key header or ?key=)")
 
 
 @app.get("/health")
@@ -48,9 +54,9 @@ def companies():
 
 
 @app.get("/v1/today")
-def today(with_body: bool = False,
+def today(with_body: bool = False, key: Optional[str] = None,
           x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    check_auth(x_api_key)
+    check_auth(x_api_key, key)
     data = codal.collect(days=1, with_body=with_body)
     return {"ok": True, "date": codal.jalali_str(codal.jalali_today()),
             "count": len(data["items"]), **data}
@@ -58,16 +64,18 @@ def today(with_body: bool = False,
 
 @app.get("/v1/latest")
 def latest(days: int = Query(30, ge=1, le=365), with_body: bool = False,
+           key: Optional[str] = None,
            x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    check_auth(x_api_key)
+    check_auth(x_api_key, key)
     data = codal.collect(days=days, with_body=with_body)
     return {"ok": True, "days": days, "count": len(data["items"]), **data}
 
 
 @app.get("/v1/important")
 def important(days: int = Query(7, ge=1, le=365), with_body: bool = False,
+              key: Optional[str] = None,
               x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    check_auth(x_api_key)
+    check_auth(x_api_key, key)
     data = codal.collect(days=days, with_body=with_body)
     picked = [i for i in data["items"] if codal.is_important(i)]
     return {"ok": True, "days": days, "count": len(picked), "items": picked,
@@ -77,9 +85,9 @@ def important(days: int = Query(7, ge=1, le=365), with_body: bool = False,
 
 @app.get("/v1/symbol/{symbol}")
 def by_symbol(symbol: str, days: int = Query(30, ge=1, le=365),
-              with_body: bool = False,
+              with_body: bool = False, key: Optional[str] = None,
               x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    check_auth(x_api_key)
+    check_auth(x_api_key, key)
     data = codal.collect(days=days, only=[symbol], with_body=with_body)
     company = codal.company_of(symbol)
     rules = codal.COMPANIES["type_rules"].get(company.get("type", ""), {})
@@ -89,8 +97,9 @@ def by_symbol(symbol: str, days: int = Query(30, ge=1, le=365),
 
 
 @app.post("/v1/reload")
-def reload_companies(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    check_auth(x_api_key)
+def reload_companies(key: Optional[str] = None,
+                     x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
+    check_auth(x_api_key, key)
     codal.COMPANIES = codal.load_companies()
     codal.cache_clear()
     return {"ok": True, "count": len(codal.symbols())}
