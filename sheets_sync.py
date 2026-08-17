@@ -29,7 +29,7 @@ WORKSHEET_NAME = os.getenv("GOOGLE_SHEET_TAB", "اطلاعیه‌ها")
 
 HEADERS = [
     "تاریخ شمسی", "نماد", "شرکت", "نوع شرکت", "عنوان",
-    "منبع", "حقوق بازنشر", "لینک", "ID",
+    "منبع", "نوع تطبیق", "حقوق بازنشر", "لینک", "ID",
 ]
 
 
@@ -41,6 +41,7 @@ def row_from_item(item: dict) -> list:
         item.get("company_type", ""),
         item.get("title", ""),
         item.get("source", ""),
+        item.get("matched_by", ""),
         item.get("rights", ""),
         item.get("url", ""),
         item.get("id", ""),
