@@ -77,11 +77,18 @@ def main() -> int:
         ws = sh.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=len(HEADERS))
         ws.append_row(HEADERS)
 
+    # اگر شیت از اجرای قبلی با تعداد ستون کمتر ساخته شده (مثلاً قبل از
+    # اضافه‌شدن ستون «نوع تطبیق»)، اول گسترشش بده وگرنه خواندن/نوشتن
+    # ستون‌های جدید با خطای «Range exceeds grid limits» شکست می‌خورد.
+    if ws.col_count < len(HEADERS):
+        ws.resize(cols=len(HEADERS))
+
+    header_row = ws.row_values(1)
+    if header_row != HEADERS:
+        ws.update("A1", [HEADERS])
+
     existing = ws.col_values(HEADERS.index("ID") + 1)
     existing_ids = set(existing[1:])  # ردیف اول هدر است
-
-    if not existing:
-        ws.append_row(HEADERS)
 
     new_rows = [row_from_item(i) for i in items if i.get("id") not in existing_ids]
 
