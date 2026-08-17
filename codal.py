@@ -161,16 +161,18 @@ def cache_clear() -> None:
 # ----------------------------------------------------------------------
 # منبع اصلی — search.codal.ir
 # ----------------------------------------------------------------------
-def fetch_codal(symbol: str, from_date: str, to_date: str) -> Dict[str, Any]:
+def fetch_codal(symbol: str, from_date: str, to_date: str,
+                 timeout: Optional[int] = None, max_pages: int = 5) -> Dict[str, Any]:
     params = dict(CODAL_DEFAULT_PARAMS)
     params.update({"Symbol": symbol, "FromDate": from_date,
                    "ToDate": to_date, "PageNumber": "1"})
     items: List[Dict[str, Any]] = []
     target = normalize_fa(symbol)
+    timeout = timeout or REQUEST_TIMEOUT
     try:
-        for page in range(1, 6):
+        for page in range(1, max_pages + 1):
             params["PageNumber"] = str(page)
-            r = session.get(SEARCH_URL, params=params, timeout=REQUEST_TIMEOUT)
+            r = session.get(SEARCH_URL, params=params, timeout=timeout)
             if r.status_code != 200:
                 return {"items": items, "error": f"http {r.status_code}"}
             data = r.json()
@@ -218,7 +220,7 @@ def build_item(letter: Dict[str, Any], symbol: str) -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 # متن کامل اطلاعیه
 # ----------------------------------------------------------------------
-def fetch_body(item: Dict[str, Any]) -> Dict[str, Any]:
+def fetch_body(item: Dict[str, Any], timeout: Optional[int] = None) -> Dict[str, Any]:
     """
     قواعد راستی‌آزمایی v4.0 (اتحاد موجودی، قاعده مخرج، زنجیره تخصیص سود)
     روی متن خود سند کار می‌کنند، نه روی عنوان. این تابع بدنه اطلاعیه را می‌کشد.
@@ -230,7 +232,7 @@ def fetch_body(item: Dict[str, Any]) -> Dict[str, Any]:
         item["body_status"] = "no_url"
         return item
     try:
-        r = session.get(item["url"], timeout=REQUEST_TIMEOUT)
+        r = session.get(item["url"], timeout=timeout or REQUEST_TIMEOUT)
         if r.status_code != 200:
             item["body_status"] = f"http {r.status_code}"
             return item

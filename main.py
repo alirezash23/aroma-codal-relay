@@ -3,6 +3,7 @@ main.py — Aroma Codal Relay API
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -105,22 +106,65 @@ def reload_companies(key: Optional[str] = None,
     return {"ok": True, "count": len(codal.symbols())}
 
 
+@app.get("/debug/ping")
+def debug_ping():
+    """
+    فقط دسترسی خام به search.codal.ir را با timeout کوتاه چک می‌کند.
+    اگر این هم تایم‌اوت داد، مشکل شبکه/فیلترینگ است، نه منطق برنامه.
+    جواب باید در کمتر از ۱۰ ثانیه بیاید.
+    """
+    import time as _time
+    to_j = codal.jalali_today()
+    started = _time.time()
+    try:
+        r = codal.session.get(
+            codal.SEARCH_URL,
+            params={**codal.CODAL_DEFAULT_PARAMS, "Symbol": "فارس",
+                   "FromDate": codal.jalali_str(to_j), "ToDate": codal.jalali_str(to_j),
+                   "PageNumber": "1"},
+            timeout=8,
+        )
+        return {"ok": True, "reachable": True, "status_code": r.status_code,
+                "elapsed_seconds": round(_time.time() - started, 2)}
+    except Exception as e:
+        return {"ok": False, "reachable": False,
+                "error": f"{type(e).__name__}: {e}",
+                "elapsed_seconds": round(_time.time() - started, 2)}
+
+
 @app.get("/debug")
-def debug(symbol: Optional[str] = None):
-    """خروجی این را بفرست تا معلوم شود کدام منبع جواب می‌دهد."""
+def debug(symbol: Optional[str] = None, with_body: bool = False):
+    """
+    خروجی این را بفرست تا معلوم شود کدام منبع جواب می‌دهد.
+    هر درخواست حداکثر ۸ ثانیه صبر می‌کند و نمادها موازی واکشی می‌شوند،
+    پس کل درخواست باید زیر ۱۵-۲۰ ثانیه تمام شود. اگر باز هم طولانی شد،
+    اول /debug/ping را امتحان کن — سریع‌تر و تشخیصی‌تر است.
+    """
     targets = [symbol] if symbol else codal.symbols()[:3]
     to_j = codal.jalali_today()
     from_j = jdatetime.date.fromgregorian(
         date=to_j.togregorian() - timedelta(days=7))
-    out: Dict[str, Any] = {
-        "range": {"from": codal.jalali_str(from_j), "to": codal.jalali_str(to_j)},
-        "symbols": {},
-    }
+    from_date, to_date = codal.jalali_str(from_j), codal.jalali_str(to_j)
+    out: Dict[str, Any] = {"range": {"from": from_date, "to": to_date}, "symbols": {}}
+
+    with ThreadPoolExecutor(max_workers=max(len(targets), 1) + 1) as pool:
+        codal_futures = {
+            pool.submit(codal.fetch_codal, s, from_date, to_date, 8): s
+            for s in targets
+        }
+        tg_future = pool.submit(codal.fetch_telegram_posts)
+
+        results = {}
+        for fut in codal_futures:
+            s = codal_futures[fut]
+            results[s] = fut.result()
+        tg = tg_future.result()
+
     for s in targets:
-        res = codal.fetch_codal(s, codal.jalali_str(from_j), codal.jalali_str(to_j))
+        res = results[s]
         sample = res["items"][:1]
-        if sample:
-            sample = [codal.fetch_body(dict(sample[0]))]
+        if sample and with_body:
+            sample = [codal.fetch_body(dict(sample[0]), timeout=8)]
             for it in sample:
                 if it.get("body"):
                     it["body"] = it["body"][:600] + " …"
@@ -130,7 +174,7 @@ def debug(symbol: Optional[str] = None):
             "codal_error": res["error"],
             "codal_sample": sample,
         }
-    tg = codal.fetch_telegram_posts()
+
     out["telegram"] = {"posts_fetched": len(tg["posts"]), "error": tg["error"],
                        "sample": tg["posts"][:2]}
     return out
