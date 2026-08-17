@@ -49,10 +49,13 @@ def main() -> int:
     print(f"items={payload['count']} sources={payload['sources_used']} "
           f"errors={len(payload['errors'])}")
 
-    # سیگنال باید صادقانه باشد: تلگرام مسیر موقت است، نه منبع.
-    # اگر فقط تلگرام جواب داده باشد، اجرا نباید سبز شود.
-    if "codal" not in payload["sources_used"]:
-        print("CODAL UNREACHABLE — only fallback data collected", file=sys.stderr)
+    # تلگرام حالا منبع اصلی و دائمی است — نه fallback موقت.
+    # هم my.codal.ir و هم search.codal.ir تست شدند و از سرور لیارا
+    # (build در ایران) هم ConnectTimeout گرفتند؛ کدال ظاهراً کل رنج
+    # IP سرورهای ابری را می‌بندد، نه فقط بر اساس کشور. تصمیم آگاهانه:
+    # تا اطلاع ثانوی، تلگرام تنها منبع است.
+    if "telegram" not in payload["sources_used"]:
+        print("TELEGRAM UNREACHABLE — no source responded", file=sys.stderr)
         return 1
     return 0
 
