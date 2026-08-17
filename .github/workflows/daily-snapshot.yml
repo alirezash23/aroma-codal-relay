@@ -38,3 +38,10 @@ jobs:
           git add data/
           git diff --staged --quiet || git commit -m "snapshot: $(date -u +%Y-%m-%d)"
           git push
+
+      - name: Sync to Google Sheet
+        continue-on-error: true  # تا وقتی Secrets تنظیم نشده، این مرحله قرمز نشود
+        env:
+          GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python sheets_sync.py
