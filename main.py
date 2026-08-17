@@ -40,6 +40,7 @@ def health():
         "version": "4.0",
         "companies": len(codal.symbols()),
         "telegram_enabled": codal.TELEGRAM_ENABLED,
+        "search_codal_enabled": codal.ENABLE_SEARCH_CODAL,
         "cache_ttl": codal.CACHE_TTL,
         "auth_required": bool(API_KEY),
         "time_jalali": codal.jalali_str(codal.jalali_today()),
@@ -107,15 +108,22 @@ def reload_companies(key: Optional[str] = None,
 
 
 @app.get("/debug/ping")
-def debug_ping():
+def debug_ping(target: str = "search"):
     """
-    فقط دسترسی خام به search.codal.ir را با timeout کوتاه چک می‌کند.
-    اگر این هم تایم‌اوت داد، مشکل شبکه/فیلترینگ است، نه منطق برنامه.
+    فقط دسترسی خام را با timeout کوتاه چک می‌کند — بدون منطق برنامه.
+    target: search (پیش‌فرض، search.codal.ir) یا mycodal (my.codal.ir)
     جواب باید در کمتر از ۱۰ ثانیه بیاید.
     """
     import time as _time
-    to_j = codal.jalali_today()
     started = _time.time()
+
+    if target == "mycodal":
+        res = codal.probe_my_codal("فارس", timeout=8)
+        res["elapsed_seconds"] = round(_time.time() - started, 2)
+        res["ok"] = res["reachable"]
+        return res
+
+    to_j = codal.jalali_today()
     try:
         r = codal.session.get(
             codal.SEARCH_URL,
@@ -130,6 +138,16 @@ def debug_ping():
         return {"ok": False, "reachable": False,
                 "error": f"{type(e).__name__}: {e}",
                 "elapsed_seconds": round(_time.time() - started, 2)}
+
+
+@app.get("/debug/mycodal")
+def debug_mycodal(symbol: str = "فارس"):
+    """
+    خروجی کامل probe_my_codal — طول HTML و ۶۰۰ کاراکتر اول را نشان می‌دهد
+    تا معلوم شود my.codal.ir واقعاً چه چیزی برمی‌گرداند. این خروجی را
+    بفرست تا بشود فهمید ارزش نوشتن اسکرِیپر واقعی برایش هست یا نه.
+    """
+    return codal.probe_my_codal(symbol, timeout=10)
 
 
 @app.get("/debug")

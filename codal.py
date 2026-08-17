@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 # تنظیمات
 # ----------------------------------------------------------------------
 SEARCH_URL = "https://search.codal.ir/api/search/v2/q"
+MY_CODAL_URL = "https://my.codal.ir/"
 CODAL_BASE = "https://codal.ir"
 TELEGRAM_URL = "https://t.me/s/Codal360_ir"
 
@@ -36,6 +37,7 @@ REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "6"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "900"))
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "1") == "1"
+ENABLE_SEARCH_CODAL = os.getenv("ENABLE_SEARCH_CODAL", "0") == "1"
 COMPANIES_PATH = os.getenv("COMPANIES_PATH", "companies.json")
 
 CODAL_DEFAULT_PARAMS = {
@@ -218,6 +220,41 @@ def build_item(letter: Dict[str, Any], symbol: str) -> Dict[str, Any]:
 
 
 # ----------------------------------------------------------------------
+# منبع my.codal.ir — SPA جاوااسکریپتی، بدون API مستند شناخته‌شده
+# ----------------------------------------------------------------------
+def probe_my_codal(symbol: str, timeout: Optional[int] = None) -> Dict[str, Any]:
+    """
+    my.codal.ir یک اپلیکیشن جاوااسکریپتی است — محتوای واقعی داخل مرورگر
+    ساخته می‌شود، نه در HTML اولیه. این تابع صادقانه فقط تشخیص می‌دهد:
+    اصلاً جواب می‌دهد؟ چقدر HTML برمی‌گردد؟ داخلش چیزی شبیه داده واقعی هست
+    یا فقط پوسته خالی برنامه (یک <div id="app"></div> خالی)؟
+
+    خروجی این تابع تصمیم می‌گیرد که آیا ارزش نوشتن یک اسکرِیپر واقعی
+    برای این منبع هست یا نه — حدس زدن endpoint داخلی‌اش بدون مستندات
+    وقت‌تلف‌کنی است.
+    """
+    try:
+        r = session.get(MY_CODAL_URL, params={"symbol": symbol},
+                        timeout=timeout or REQUEST_TIMEOUT)
+        text = r.text or ""
+        # نشانه‌های ساده یک SPA خالی: بدنه کوتاه، یا فقط یک div ریشه بدون محتوا
+        looks_like_empty_shell = len(text) < 3000 and (
+            'id="app"' in text or 'id="root"' in text or "ng-app" in text)
+        return {
+            "reachable": True,
+            "status_code": r.status_code,
+            "html_length": len(text),
+            "looks_like_empty_shell": looks_like_empty_shell,
+            "preview": normalize_fa(text[:600]),
+            "error": None,
+        }
+    except Exception as e:
+        return {"reachable": False, "status_code": None, "html_length": 0,
+                "looks_like_empty_shell": None, "preview": "",
+                "error": f"{type(e).__name__}: {e}"}
+
+
+# ----------------------------------------------------------------------
 # متن کامل اطلاعیه
 # ----------------------------------------------------------------------
 def fetch_body(item: Dict[str, Any], timeout: Optional[int] = None) -> Dict[str, Any]:
@@ -359,19 +396,31 @@ def collect(days: int = 1, only: Optional[List[str]] = None,
 
     items: List[Dict[str, Any]] = []
     errors: Dict[str, str] = {}
-    missing: List[str] = []
+    missing: List[str] = list(targets)
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        for symbol, res in pool.map(
-                lambda s: (s, fetch_codal(s, from_date, to_date)), targets):
-            if res["error"]:
-                errors[symbol] = res["error"]
-            if res["items"]:
-                items.extend(res["items"])
-            else:
-                missing.append(symbol)
+    # search.codal.ir تأیید شده که از IP سرورهای ابری (گیت‌هاب و لیارا،
+    # حتی build-در-ایران) قابل دسترسی نیست — ConnectTimeout در هر دو تست.
+    # به‌جای تلف‌کردن ۲۰ ثانیه به‌ازای هر نماد، پیش‌فرض خاموش است.
+    # اگر یک VPS/IP دیگر امتحان شد که وصل می‌شود، با
+    # ENABLE_SEARCH_CODAL=1 دوباره روشنش کن.
+    if ENABLE_SEARCH_CODAL:
+        missing = []
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            for symbol, res in pool.map(
+                    lambda s: (s, fetch_codal(s, from_date, to_date)), targets):
+                if res["error"]:
+                    errors[symbol] = res["error"]
+                if res["items"]:
+                    items.extend(res["items"])
+                else:
+                    missing.append(symbol)
 
     sources_used = ["codal"] if items else []
+
+    # my.codal.ir: هنوز API واقعی‌اش مستند نشده — probe_my_codal فقط
+    # تشخیص می‌دهد جواب می‌دهد یا نه و چه چیزی برمی‌گرداند. تا وقتی
+    # جواب واقعی‌اش را از /debug/mycodal ندیده‌ایم، اینجا آیتمی تولید
+    # نمی‌کند — این صادقانه‌تر از حدس‌زدن یک ساختار ناموجود است.
 
     if TELEGRAM_ENABLED and missing:
         tg = fetch_telegram_posts()
