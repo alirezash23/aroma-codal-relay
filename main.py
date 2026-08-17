@@ -34,6 +34,7 @@ def check_auth(header_key: Optional[str], query_key: Optional[str] = None) -> No
 
 @app.get("/health")
 def health():
+    snap = codal.load_remote_snapshot()
     return {
         "ok": True,
         "service": "Aroma Codal Relay",
@@ -45,6 +46,8 @@ def health():
         "auth_required": bool(API_KEY),
         "time_jalali": codal.jalali_str(codal.jalali_today()),
         "time_iso": datetime.now().isoformat(),
+        "snapshot_generated_at_jalali": snap.get("generated_at_jalali"),
+        "snapshot_fetch_error": snap.get("_fetch_error"),
     }
 
 
@@ -56,41 +59,42 @@ def companies():
 
 
 @app.get("/v1/today")
-def today(with_body: bool = False, key: Optional[str] = None,
+def today(key: Optional[str] = None,
           x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     check_auth(x_api_key, key)
-    data = codal.collect(days=1, with_body=with_body)
+    data = codal.serve_snapshot(days=1)
     return {"ok": True, "date": codal.jalali_str(codal.jalali_today()),
             "count": len(data["items"]), **data}
 
 
 @app.get("/v1/latest")
-def latest(days: int = Query(30, ge=1, le=365), with_body: bool = False,
+def latest(days: int = Query(30, ge=1, le=365),
            key: Optional[str] = None,
            x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     check_auth(x_api_key, key)
-    data = codal.collect(days=days, with_body=with_body)
+    data = codal.serve_snapshot(days=days)
     return {"ok": True, "days": days, "count": len(data["items"]), **data}
 
 
 @app.get("/v1/important")
-def important(days: int = Query(7, ge=1, le=365), with_body: bool = False,
+def important(days: int = Query(7, ge=1, le=365),
               key: Optional[str] = None,
               x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     check_auth(x_api_key, key)
-    data = codal.collect(days=days, with_body=with_body)
+    data = codal.serve_snapshot(days=days)
     picked = [i for i in data["items"] if codal.is_important(i)]
     return {"ok": True, "days": days, "count": len(picked), "items": picked,
             "errors": data["errors"], "sources_used": data["sources_used"],
-            "range": data["range"]}
+            "range": data["range"],
+            "snapshot_generated_at_jalali": data["snapshot_generated_at_jalali"]}
 
 
 @app.get("/v1/symbol/{symbol}")
 def by_symbol(symbol: str, days: int = Query(30, ge=1, le=365),
-              with_body: bool = False, key: Optional[str] = None,
+              key: Optional[str] = None,
               x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     check_auth(x_api_key, key)
-    data = codal.collect(days=days, only=[symbol], with_body=with_body)
+    data = codal.serve_snapshot(days=days, only=[symbol])
     company = codal.company_of(symbol)
     rules = codal.COMPANIES["type_rules"].get(company.get("type", ""), {})
     return {"ok": True, "symbol": symbol, "days": days,
@@ -105,6 +109,17 @@ def reload_companies(key: Optional[str] = None,
     codal.COMPANIES = codal.load_companies()
     codal.cache_clear()
     return {"ok": True, "count": len(codal.symbols())}
+
+
+@app.get("/debug/snapshot")
+def debug_snapshot():
+    """
+    خروجی خام واکشی data/latest.json از raw.githubusercontent.com —
+    اگر این خطا داد، یعنی حتی گیت‌هاب هم از این سرور در دسترس نیست
+    (بعید، ولی برای اطمینان). اگر خالی بود، یعنی هنوز Actions یک بار
+    هم اجرا نشده یا تلگرام آن روز چیزی نداشته.
+    """
+    return codal.load_remote_snapshot()
 
 
 @app.get("/debug/ping")

@@ -38,6 +38,17 @@ MAX_WORKERS = int(os.getenv("MAX_WORKERS", "6"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "900"))
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "1") == "1"
 ENABLE_SEARCH_CODAL = os.getenv("ENABLE_SEARCH_CODAL", "0") == "1"
+
+# لیارا (داخل ایران) به t.me وصل نمی‌شود — تلگرام در ایران فیلتر است،
+# صرف‌نظر از این‌که سرور کجای دنیا میزبانی شده. اما گیت‌هاب فیلتر نیست
+# و می‌تواند تلگرام را بخواند. پس: Actions هر روز تلگرام را می‌خواند و
+# در خود مخزن ذخیره می‌کند (snapshot.py)، و این سرویس آن فایل ذخیره‌شده
+# را از raw.githubusercontent.com می‌خواند — که از لیارا هم در دسترس است.
+SNAPSHOT_RAW_URL = os.getenv(
+    "SNAPSHOT_RAW_URL",
+    "https://raw.githubusercontent.com/alirezash23/aroma-codal-relay/main/data/latest.json",
+)
+SNAPSHOT_CACHE_TTL = int(os.getenv("SNAPSHOT_CACHE_TTL", "300"))  # ۵ دقیقه
 COMPANIES_PATH = os.getenv("COMPANIES_PATH", "companies.json")
 
 CODAL_DEFAULT_PARAMS = {
@@ -374,8 +385,65 @@ def match_telegram(symbol: str, posts: List[Dict[str, Any]]) -> List[Dict[str, A
     return out
 
 
+def load_remote_snapshot(timeout: int = 10) -> Dict[str, Any]:
+    """
+    فایل data/latest.json را از raw.githubusercontent.com می‌خواند —
+    همان فایلی که GitHub Actions هر روز با snapshot.py می‌سازد.
+    این مسیر چون از سرور ابری خارج از ایران (گیت‌هاب) پر می‌شود و
+    raw.githubusercontent.com از داخل ایران هم در دسترس است، دور زدن
+    مشکل «تلگرام در ایران فیلتر است، کدال IP ابری را می‌بندد» است.
+    """
+    cached = cache_get("remote_snapshot")
+    if cached is not None:
+        return cached
+    try:
+        r = session.get(SNAPSHOT_RAW_URL, timeout=timeout)
+        r.raise_for_status()
+        data = r.json()
+        data["_fetch_error"] = None
+        cache_set("remote_snapshot", data)
+        return data
+    except Exception as e:
+        return {"items": [], "errors": {}, "sources_used": [],
+                "generated_at_jalali": None, "generated_at_iso": None,
+                "_fetch_error": f"{type(e).__name__}: {e}"}
+
+
+def serve_snapshot(days: Optional[int] = None,
+                   only: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    داده را از اسنپ‌شات از‌پیش‌ذخیره‌شده گیت‌هاب سرو می‌کند — نه با
+    درخواست زنده به تلگرام. برای استفاده در main.py وقتی سرویس روی
+    زیرساختی اجرا می‌شود که به t.me دسترسی مستقیم ندارد (مثل لیارا).
+    """
+    snap = load_remote_snapshot()
+    items = list(snap.get("items", []))
+
+    if only:
+        targets = {normalize_fa(s) for s in only}
+        items = [i for i in items if normalize_fa(i.get("symbol", "")) in targets]
+
+    if days:
+        items = filter_by_days(items, days)
+
+    errors = dict(snap.get("errors", {}))
+    if snap.get("_fetch_error"):
+        errors["snapshot_fetch"] = snap["_fetch_error"]
+
+    return {
+        "items": items,
+        "errors": errors,
+        "sources_used": snap.get("sources_used", []),
+        "range": snap.get("range", {}),
+        "snapshot_generated_at_jalali": snap.get("generated_at_jalali"),
+        "snapshot_generated_at_iso": snap.get("generated_at_iso"),
+    }
+
+
 # ----------------------------------------------------------------------
-# موتور
+# موتور — واکشی زنده (فقط از جایی کار می‌کند که هم به کدال هم به تلگرام
+# دسترسی داشته باشد؛ از لیارا تلگرام فیلتر است. این تابع را snapshot.py
+# روی گیت‌هاب صدا می‌زند، نه main.py مستقیم روی لیارا)
 # ----------------------------------------------------------------------
 def collect(days: int = 1, only: Optional[List[str]] = None,
             with_body: bool = False) -> Dict[str, Any]:
