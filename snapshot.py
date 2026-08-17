@@ -49,9 +49,10 @@ def main() -> int:
     print(f"items={payload['count']} sources={payload['sources_used']} "
           f"errors={len(payload['errors'])}")
 
-    # اگر هیچ منبعی جواب نداد، خطا بده تا Actions قرمز شود و متوجه شوی
-    if not payload["sources_used"]:
-        print("NO SOURCE RESPONDED", file=sys.stderr)
+    # سیگنال باید صادقانه باشد: تلگرام مسیر موقت است، نه منبع.
+    # اگر فقط تلگرام جواب داده باشد، اجرا نباید سبز شود.
+    if "codal" not in payload["sources_used"]:
+        print("CODAL UNREACHABLE — only fallback data collected", file=sys.stderr)
         return 1
     return 0
 

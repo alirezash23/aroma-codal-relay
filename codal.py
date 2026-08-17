@@ -281,16 +281,42 @@ def fetch_telegram_posts() -> Dict[str, Any]:
     return result
 
 
+def match_symbol(symbol: str, name: str, text: str) -> Optional[str]:
+    """
+    تطبیق نماد در متن آزاد تلگرام.
+
+    این تابع عمداً سخت‌گیر است. تجربه اولین اجرای واقعی:
+    جستجوی ساده نماد در متن، «خراسان» را داخل «#اخشان_خراسان» و
+    «بوعلی» را داخل «#سرمایه_گذاری_بوعلی» مچ می‌کرد و اطلاعیه یک شرکت
+    را به شرکت دیگری نسبت می‌داد. یک انتساب غلط از ده اطلاعیه ازدست‌رفته
+    گران‌تر است، پس اینجا دقت بر پوشش مقدم است.
+
+    دو مسیر پذیرفته‌شده:
+    - هشتگ دقیق نماد: #زاگرس  (ولی نه #جم_پیلن برای نماد جم)
+    - نام کامل شرکت در متن: «پتروشیمی جم»
+
+    برای هشتگ، زیرخط دست‌نخورده می‌ماند تا #جم_پیلن با #جم اشتباه نشود.
+    برای نام شرکت، زیرخط به فاصله تبدیل می‌شود تا #پتروشیمی_جم خوانده شود.
+    """
+    raw = normalize_fa(text)
+    flat = re.sub(r"[_\-]+", " ", raw)
+    if re.search(rf"#\s*{re.escape(normalize_fa(symbol))}(?![\w\u200c])", raw):
+        return "hashtag"
+    n = normalize_fa(name)
+    if n and n in flat:
+        return "company_name"
+    return None
+
+
 def match_telegram(symbol: str, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    target = normalize_fa(symbol)
     company = company_of(symbol)
     out = []
     for p in posts:
-        # مرز کلمه لازم است، وگرنه «جم» داخل «مجمع» هم مچ می‌شود
-        if not re.search(rf"(?<![\u0600-\u06FF]){re.escape(target)}(?![\u0600-\u06FF])",
-                         p["text"]):
+        how = match_symbol(symbol, company.get("name", ""), p["text"])
+        if not how:
             continue
         out.append({
+            "matched_by": how,
             "id": p.get("post") or f"tg-{abs(hash(p['text']))}",
             "symbol": symbol,
             "company": company.get("name", ""),

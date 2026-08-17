@@ -1,9 +1,11 @@
 name: Daily Codal snapshot
 
+# اجرای زمان‌بندی‌شده فعلاً خاموش است.
+# در تست 1405/05/26 سرورهای گیت‌هاب به search.codal.ir نرسیدند (ConnectTimeout).
+# مسیر اصلی، سرور داخل ایران است. اگر روزی دسترسی باز شد، cron زیر را برگردان:
+#   schedule:
+#     - cron: "30 6 * * 0-4"   # 10:00 تهران
 on:
-  schedule:
-    # 06:30 UTC = 10:00 تهران
-    - cron: "30 6 * * 0-4"
   workflow_dispatch:
     inputs:
       days:
