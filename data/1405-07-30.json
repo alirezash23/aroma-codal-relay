@@ -1,0 +1,35 @@
+{
+  "generated_at_jalali": "1405/07/30",
+  "generated_at_iso": "2026-10-22T12:11:37.139158",
+  "days": 3,
+  "count": 1,
+  "sources_used": [
+    "telegram"
+  ],
+  "errors": {},
+  "range": {
+    "from": "1405/07/28",
+    "to": "1405/07/30"
+  },
+  "items": [
+    {
+      "matched_by": "hashtag",
+      "id": "Codal360_ir/349884",
+      "symbol": "پارس",
+      "company": "پتروشیمی پارس",
+      "company_type": "producer",
+      "title": "#پارس توضیحات در خصوص اطلاعات و صورت های مالی منتشر شده #پتروشیمی_پارس دلایل افزایش سود عملیاتی شش ماهه اول سال 1405 نسبت به دوره مشابه سال قبل به پیوست ارسال شد. 1405/07/30 @codal360_ir",
+      "letter_code": "",
+      "period": "",
+      "published_jalali": "",
+      "published_iso": "2026-10-22T11:30:58+00:00",
+      "url": "https://t.me/Codal360_ir/349884",
+      "has_html": false,
+      "source": "telegram",
+      "rights": "rewrite_required",
+      "body": null,
+      "body_status": "not_applicable",
+      "warning": "مسیر موقت. در متن به «اطلاعیه کدال» ارجاع بده نه به کانال. هر عدد در اولین فرصت با خود سند تطبیق داده شود."
+    }
+  ]
+}
